@@ -5,7 +5,12 @@ import os
 import cv2
 import pytesseract
 import re
+import random
+from pynput import mouse
+from pynput.mouse import Button, Controller
 
+mouse_controller = Controller()
+pause_clicking = True  # The algorithm will be paused at startup
 
 def get_telegram_window_bbox():
     windows = gw.getWindowsWithTitle('Telegram')
@@ -13,7 +18,6 @@ def get_telegram_window_bbox():
         window = windows[0]
         return (window.left, window.top, window.width, window.height)
     return None
-
 
 def perform_ocr(img):
     # Set Tesseract path
@@ -24,23 +28,20 @@ def perform_ocr(img):
 
     # Use regular expressions to extract numbers
     numbers = re.findall(r'\d+', text)
-
     return numbers
 
+def on_click(x, y, button, pressed):
+    global pause_clicking
+    if button == Button.right and pressed:
+        pause_clicking = not pause_clicking
+        print(f"Clicking {'paused' if pause_clicking else 'resumed'}")
+        return True
 
-def main():
-    bbox = get_telegram_window_bbox()
-    if bbox is None:
-        print("Telegram window not found.")
-        return
+# Add mouse listener
+listener = mouse.Listener(on_click=on_click)
+listener.start()
 
-    # Activate the Telegram window
-    window = gw.getWindowsWithTitle('Telegram')[0]
-    window.activate()
-
-    # Delay to ensure the window is activated
-    pyautogui.sleep(1)
-
+def process_image(bbox):
     # Capture screenshot of the specified region
     screenshot_path = "telegram_screenshot.png"
     screenshot = pyautogui.screenshot(region=bbox)
@@ -65,7 +66,6 @@ def main():
     cropped_image = image.crop((crop_left, crop_top, crop_right, crop_bottom))
 
     # Define the areas to highlight
-    # top, right77, bottom, left79
     highlight_areas = [
         (10, 243, 163, 43),
         (10, 166, 163, 122),
@@ -73,26 +73,24 @@ def main():
         (10, 8, 163, 279),
         (70, 243, 103, 43),
         (70, 166, 103, 122),
-        (70, 89, 103, 201),
-        (70, 8, 103, 279),
-        (130, 243, 43, 43),
-        (130, 166, 43, 122),
-        (130, 89, 43, 201),
-        (130, 8, 43, 279),
+        (70, 88, 103, 201),
+        (70, 8, 103, 280),
+        (130, 243, 43, 48),
+        (130, 164, 43, 123),
+        (130, 86, 43, 199),
+        (130, 8, 43, 277),
     ]
 
-    for idx, (
-    highlight_margin_top, highlight_margin_right, highlight_margin_bottom, highlight_margin_left) in enumerate(
-            highlight_areas):
+    coordinates = []
+    numbers_dict = {}
+    dragged = False  # Flag to track if a drag action was performed
+
+    for idx, (highlight_margin_top, highlight_margin_right, highlight_margin_bottom, highlight_margin_left) in enumerate(highlight_areas):
         # Calculate the coordinates for the highlighted area
         highlight_left = highlight_margin_left
         highlight_top = highlight_margin_top
         highlight_right = cropped_image.width - highlight_margin_right
         highlight_bottom = cropped_image.height - highlight_margin_bottom
-
-        # Print the coordinates of the highlighted area
-        print(
-            f"\nArea {idx + 1}\nLeft: {highlight_left}\nTop: {highlight_top}\nRight: {highlight_right}\nBottom: {highlight_bottom}")
 
         # Draw a rectangle around the highlighted area
         draw = ImageDraw.Draw(cropped_image)
@@ -108,20 +106,60 @@ def main():
 
         # Perform OCR on the highlighted area
         numbers = perform_ocr(cv2.imread(highlighted_area_path))
+        coordinates.append((highlight_left, highlight_top, highlight_right, highlight_bottom))
 
-        # Print OCR results
-        print(f"Number: {numbers}")
+        for number in numbers:
+            last_digit = number[-1]  # Extract the last digit
+            if last_digit in numbers_dict:
+                numbers_dict[last_digit].append((idx + 1, number))
+            else:
+                numbers_dict[last_digit] = [(idx + 1, number)]
 
-        # Calculate the center of the highlighted area
-        center_x = bbox[0] + crop_left + highlight_left + (highlight_right - highlight_left) / 2
-        center_y = bbox[1] + crop_top + highlight_top + (highlight_bottom - highlight_top) / 2
+    # Check for identical last digits and perform the drag action
+    for last_digit, areas in numbers_dict.items():
+        # Only connect areas if one of the numbers has a single digit
+        filtered_areas = [area for area in areas if len(area[1]) == 1]
+        if len(filtered_areas) >= 1 and len(areas) >= 2:
+            # Ensure one of the areas has a single digit number
+            first_area = filtered_areas[0][0] - 1
+            second_area = [area for area in areas if area[0] != filtered_areas[0][0]][0][0] - 1
 
-        # Move the cursor to the center of the highlighted area
-        pyautogui.moveTo(center_x, center_y)
+            start_x = bbox[0] + crop_left + coordinates[first_area][0] + (coordinates[first_area][2] - coordinates[first_area][0]) / 2
+            start_y = bbox[1] + crop_top + coordinates[first_area][1] + (coordinates[first_area][3] - coordinates[first_area][1]) / 2
+
+            end_x = bbox[0] + crop_left + coordinates[second_area][0] + (coordinates[second_area][2] - coordinates[second_area][0]) / 2
+            end_y = bbox[1] + crop_top + coordinates[second_area][1] + (coordinates[second_area][3] - coordinates[second_area][1]) / 2
+
+            # Perform the drag action
+            mouse_controller.position = (start_x, start_y)
+            mouse_controller.press(Button.left)
+            mouse_controller.position = (end_x, end_y)
+            mouse_controller.release(Button.left)
+            print(f"Dragged from area {first_area + 1} to area {second_area + 1} based on last digit: {last_digit}")
+            dragged = True  # Set the flag to True indicating a drag action was performed
+            break  # Assuming only one drag action is needed
 
     # Save the cropped and highlighted image in the root directory
     cropped_image_path = os.path.join(os.getcwd(), "cropped_highlighted_image.png")
     cropped_image.save(cropped_image_path)
+
+def main():
+    bbox = get_telegram_window_bbox()
+    if bbox is None:
+        print("Telegram window not found.")
+        return
+
+    # Activate the Telegram window
+    window = gw.getWindowsWithTitle('Telegram')[0]
+    window.activate()
+
+    while True:
+        # Wait for the pause/resume state if paused
+        while pause_clicking:
+            pyautogui.sleep(0.1)
+
+        # Process the image and perform actions
+        process_image(bbox)
 
 
 if __name__ == "__main__":
