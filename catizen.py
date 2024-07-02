@@ -9,6 +9,7 @@ import threading
 mouse_controller = Controller()
 pause_clicking = True  # The algorithm will be paused at startup
 exit_program = threading.Event()  # Event to signal exit
+successful_connections = 0  # Counter for successful connections
 
 def get_telegram_window_bbox():
     windows = gw.getWindowsWithTitle('Telegram')
@@ -16,7 +17,6 @@ def get_telegram_window_bbox():
         window = windows[0]
         return (window.left, window.top, window.width, window.height)
     return None
-
 
 def on_click(x, y, button, pressed):
     global pause_clicking
@@ -31,7 +31,6 @@ def on_click(x, y, button, pressed):
 # Add mouse listener
 mouse_listener = mouse.Listener(on_click=on_click)
 mouse_listener.start()
-
 
 # Function to handle keyboard events
 def on_press(key):
@@ -52,7 +51,6 @@ def capture_screenshot(bbox):
     screenshot.save(screenshot_path)
     return screenshot_path
 
-
 def find_blue_area(image):
     blue_color = (19, 199, 255)  # RGB value for the blue color code #13C7FF
     width, height = image.size
@@ -64,7 +62,6 @@ def find_blue_area(image):
                 return (x, y)
 
     return None
-
 
 def process_image(bbox):
     screenshot_path = capture_screenshot(bbox)
@@ -109,6 +106,11 @@ def process_image(bbox):
         highlight_right = cropped_image.width - highlight_margin_right
         highlight_bottom = cropped_image.height - highlight_margin_bottom
 
+        # Ensure coordinates are valid
+        if highlight_left >= highlight_right or highlight_top >= highlight_bottom:
+            print(f"[⚠️] Invalid highlight coordinates: left={highlight_left}, top={highlight_top}, right={highlight_right}, bottom={highlight_bottom}")
+            continue
+
         draw = ImageDraw.Draw(cropped_image)
         draw.rectangle(
             [(highlight_left, highlight_top), (highlight_right, highlight_bottom)],
@@ -121,6 +123,7 @@ def process_image(bbox):
     cropped_image.save(cropped_image_path)
 
     def drag_to_blue_area(start_idx):
+        global successful_connections  # Access the global counter
         start_x = bbox[0] + crop_left + coordinates[start_idx][0] + (coordinates[start_idx][2] - coordinates[start_idx][0]) / 2
         start_y = bbox[1] + crop_top + coordinates[start_idx][1] + (coordinates[start_idx][3] - coordinates[start_idx][1]) / 2
 
@@ -148,7 +151,8 @@ def process_image(bbox):
             new_image = Image.open(new_screenshot_path)
 
             if not images_are_equal(cropped_image, new_image):
-                print(f"[✅] Success!")
+                successful_connections += 1  # Increment the counter
+                print(f"[✅] Success! Total successful connections: {successful_connections}")
                 return True
             else:
                 return False
@@ -167,7 +171,6 @@ def process_image(bbox):
             retries -= 1
     return True  # Return True after processing all coordinates
 
-
 def process_loop(bbox):
     global pause_clicking
     while not exit_program.is_set():
@@ -178,11 +181,8 @@ def process_loop(bbox):
         if not process_image(bbox):
             break
 
-
 def main():
-
-    print("[💲] PROGRAM STARTED!\n[😺] Press the right mouse to START \n[😺] Press the right mouse to PAUSE\n[😺] "
-          "Press SpaceBar to EXIT the program")
+    print("[💲] PROGRAM STARTED!\n[😺] Press the right mouse to START \n[😺] Press the right mouse to PAUSE\n[😺] Press SpaceBar to EXIT the program")
     bbox = get_telegram_window_bbox()
     if bbox is None:
         print("[😿] Telegram window not found.")
@@ -198,8 +198,7 @@ def main():
     exit_program.set()  # Signal the exit event for the process loop
     process_thread.join()
     mouse_listener.stop()
-    print("[🗿] Program exited.")
-
+    print(f"[🗿] Program exited. Total successful connections: {successful_connections}")
 
 if __name__ == "__main__":
     main()
