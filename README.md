@@ -17,7 +17,7 @@ A bot written for the Telegram game that automatically matches cats with the sam
 1. Download the Repository:
 - Clone the repository or download the ZIP file and extract it.
 
-`git clone https://github.com/yourusername/telegram-catizen-bot.git`
+`git clone https://github.com/mykolamysak/CatizenBot.git`
 
 Or download the ZIP file and extract it:
 - Go to the repository page on GitHub.
@@ -29,7 +29,7 @@ Or download the ZIP file and extract it:
 - Open the terminal (Command Prompt, PowerShell, or any terminal of your choice).
 - Navigate to the dist folder where the catizen.exe file is located.
 
-`cd path_to_downloaded_repository/telegram-catizen-bot/dist`
+`cd path_to_downloaded_repository/CatizenBot/dist`
 
 3. Run the catizen.exe File:
 
